@@ -250,12 +250,14 @@ def prediction(input_1, input_2, interpreter, classes):
     # get results(probability)
     output_data = interpreter.get_tensor(interpreter.get_output_details()[0]['index'])
 
+    # new_results, new_probabilty
     return (classes[np.argmax(output_data)]), output_data[0, np.argmax(output_data)]
 
 
 def camera_init():
     cap = cv2.VideoCapture(0)
     results = "stacking..."
+    state = "stacking..."
     probabilty = 0
     pos_state = "normal"
     fontcolor = (255, 255, 255)
@@ -309,11 +311,12 @@ def check_state(results, state):
         state = human_states[3]  # grow_up
     else:
         pass  # other
+    return state
 
 
 def plot_state(plot_data, plot_raw_data, savename, classes):
     plt.plot(np.arange(len(plot_data)), plot_data, color='red', label='checked')
-    plt.plot(np.arange(len(plot_raw_data)), plot_raw_data, color='b', label='Unhecked')
+    plt.plot(np.arange(len(plot_raw_data)), plot_raw_data, color='b', label='Unchecked')
     plt.yticks(range(1, 8), classes)
     plt.ylim([0.0, 8.0])
     plt.xlabel("Frames")
@@ -362,15 +365,16 @@ def demo():
                     plot_raw_data.append((np.where(np.array(classes) == new_results)[0][0]) + 1)
                     results, probabilty, pos_state, fontcolor = check_results(new_results, new_probabilty, results,
                                                                               probabilty, pos_state, fontcolor)
-                    plot_data.append((np.where(np.array(classes) == results)[0][0]) + 1)
+                    state = check_state(results, state)
+                    plot_data.append((np.where(np.array(classes) == state)[0][0]) + 1)
                 else:
                     cv2.imshow("demo", Videoframe)
-                    if results == "stacking...":
+                    if state == "stacking...":
                         plot_data.append(0)
                         plot_raw_data.append(0)
                     else:
-                        plot_data.append((np.where(np.array(classes) == results)[0][0]) + 1)
-                        plot_raw_data.append((np.where(np.array(classes) == new_results)[0][0]) + 1)
+                        plot_data.append((np.where(np.array(classes) == state)[0][0]) + 1)
+
                 # leave loop and shutdown
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     plot_state(plot_data, plot_raw_data, savename, classes)
