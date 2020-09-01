@@ -216,7 +216,7 @@ def stack_data(frames, x, y, input_1, input_2):
 def model_init():
     # Define Name List of Classified results
     classes = ["st_sit", "sit_st", "sit_lie", "lie_sit", "fall", "grow_up", "other"]
-
+    human_states = ["standing", "sitting", "fall", "grow_up", "other"]
     # create Interpreter for model
     interpreter = tf.lite.Interpreter(model_path="./converted_model2.tflite")
     interpreter.allocate_tensors()
@@ -232,7 +232,7 @@ def model_init():
     input_1 = np.zeros([12, 50, 30])
     input_2 = np.zeros([12, 30, 50])
 
-    return classes, interpreter, input_1, input_2
+    return classes,human_states, interpreter, input_1, input_2
 
 
 def prediction(input_1, input_2, interpreter, classes):
@@ -255,13 +255,13 @@ def prediction(input_1, input_2, interpreter, classes):
 
 
 def camera_init():
-    cap = cv2.VideoCapture(0)
-    results = "stacking..."
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     state = "stacking..."
+    results = "stacking..."
     probabilty = 0
     pos_state = "normal"
     fontcolor = (255, 255, 255)
-    return cap, results, probabilty, pos_state, fontcolor
+    return cap, state, results, probabilty, pos_state, fontcolor
 
 
 def demo_camera(cap):
@@ -294,7 +294,7 @@ def check_results(new_results, new_probability, results, probability, pos_state,
 
 
 def check_state(results, state):
-    human_states = ["standing", "sitting", "fall", "grow_up"]
+    human_states = ["standing", "sitting", "fall", "grow_up", "other"]
     classes = ["st_sit", "sit_st", "sit_lie", "lie_sit", "fall", "grow_up", "other"]
 
     if results == classes[0]:
@@ -309,16 +309,16 @@ def check_state(results, state):
         state = human_states[2]  # fall
     elif results == classes[5]:
         state = human_states[3]  # grow_up
-    else:
-        pass  # other
+    elif results == classes[6]:
+        state = human_states[4]  # other
     return state
 
 
-def plot_state(plot_data, plot_raw_data, savename, classes):
+def plot_state(plot_data, plot_raw_data, savename, human_states):
     plt.plot(np.arange(len(plot_data)), plot_data, color='red', label='checked')
     plt.plot(np.arange(len(plot_raw_data)), plot_raw_data, color='b', label='Unchecked')
-    plt.yticks(range(1, 8), classes)
-    plt.ylim([0.0, 8.0])
+    plt.yticks(range(1, 6), human_states)
+    plt.ylim([0.0, 6.0])
     plt.xlabel("Frames")
     plt.legend()
     plt.grid()
@@ -327,8 +327,8 @@ def plot_state(plot_data, plot_raw_data, savename, classes):
 
 def demo():
     configFileName = "./6843_pplcount_debug.cfg"
-    dataPortName = "COM5"
-    userPortName = "COM10"
+    dataPortName = "COM3"
+    userPortName = "COM4"
     plot_data = []  # checked results
     plot_raw_data = []  # unchecked results
     savename = './plot.png'
@@ -337,9 +337,9 @@ def demo():
     CLIport, Dataport = serialConfig(configFileName, dataPortName, userPortName)
 
     # Initialize interpreter and Print Input/Output'shape of model
-    classes, interpreter, input_1, input_2 = model_init()
+    classes,human_states, interpreter, input_1, input_2 = model_init()
     # Initialize Camera and cv2
-    cap, results, probabilty, pos_state, fontcolor = camera_init()
+    cap, state, results, probabilty, pos_state, fontcolor = camera_init()
 
     # Main process
     while True:
@@ -354,30 +354,33 @@ def demo():
                 cv2.putText(Videoframe, "Frames:{} Points:{} noise:{}".format(numframes, numPoints, denoise_numPoint),
                             (10, 40),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
-                cv2.putText(Videoframe, "Results:", (10, 80),
+                cv2.putText(Videoframe, "states:", (10, 80),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-                cv2.putText(Videoframe, "{}({:.2f}%) {}".format(results, probabilty * 100, pos_state), (140, 80),
+                cv2.putText(Videoframe, "{}({:.2f}%) {}".format(state, probabilty * 100, pos_state), (140, 80),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, fontcolor, 2, cv2.LINE_AA)
 
                 if numframes > 11 and numframes % offset == 0:
                     cv2.imshow("demo", Videoframe)
                     new_results, new_probabilty = prediction(input_1, input_2, interpreter, classes)
-                    plot_raw_data.append((np.where(np.array(classes) == new_results)[0][0]) + 1)
-                    results, probabilty, pos_state, fontcolor = check_results(new_results, new_probabilty, results,
-                                                                              probabilty, pos_state, fontcolor)
+                    new_state = check_state(new_results, state)
+
+                    plot_raw_data.append((np.where(np.array(human_states) == new_state)[0][0]) + 1)
+
+                    results, probabilty, pos_state, fontcolor = check_results(new_results, new_probabilty, results, probabilty, pos_state, fontcolor)
                     state = check_state(results, state)
-                    plot_data.append((np.where(np.array(classes) == state)[0][0]) + 1)
+
+                    plot_data.append((np.where(np.array(human_states) == state)[0][0]) + 1)
                 else:
                     cv2.imshow("demo", Videoframe)
                     if state == "stacking...":
                         plot_data.append(0)
                         plot_raw_data.append(0)
                     else:
-                        plot_data.append((np.where(np.array(classes) == state)[0][0]) + 1)
-
+                        plot_data.append((np.where(np.array(human_states) == state)[0][0]) + 1)
+                        plot_raw_data.append((np.where(np.array(human_states) == new_state)[0][0]) + 1)
                 # leave loop and shutdown
                 if cv2.waitKey(1) & 0xFF == ord('q'):
-                    plot_state(plot_data, plot_raw_data, savename, classes)
+                    plot_state(plot_data, plot_raw_data, savename, human_states)
                     cap.release()
                     cv2.destroyAllWindows()
                     Dataport.close()  # 清除序列通訊物件
