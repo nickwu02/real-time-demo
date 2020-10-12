@@ -33,7 +33,7 @@ def serialConfig(configFileName, dataPortName, userPortName):
     try:
         cliPort = serial.Serial(userPortName, 115200)
         dataPort = serial.Serial(dataPortName, 921600,
-                                 timeout=0.08)  # this timeout for buffer's updating transfer rate too slowly by serial port
+                                 timeout=0.1)  # this timeout for buffer's updating transfer rate too slowly by serial port
     except serial.SerialException as se:
         print("Serial Port 0ccupied,error = ")
         print(str(se))
@@ -117,75 +117,80 @@ def readAndParseData(Dataport):
     # print(len(byteVec))
 
     # --------------------------------For point cloud-----------------------------------------------------------------------
-    if np.all(byteVec[0:8] == magicWord) and len(readBuffer) > 52:
-        subFrameNum = struct.unpack('I', readBuffer[24:28])[0]
-        numTLVs = struct.unpack('h', readBuffer[48:50])[0]
-        typeTLV = struct.unpack('I', readBuffer[52:56])[0]
-        lenTLV = struct.unpack('I', readBuffer[56:60])[0]  # include length of tlvHeader(8bytes)
-        numPoints = (lenTLV - 8) // 20
-        # print("frames: ",subFrameNum,"numTLVs:",numTLVs,"type:",typeTLV,"length:",lenTLv,'numPoints:',numPoints)
-        PointcloudLength = 20
+    if len(readBuffer) > 52:
+        countmagic = 0
+        for i in range(1, 9):
+            if byteVec[i-1] == magicWord[i-1]:
+                countmagic = countmagic + 1
+        if countmagic == 8:
+            subFrameNum = struct.unpack('I', readBuffer[24:28])[0]
+            numTLVs = struct.unpack('h', readBuffer[48:50])[0]
+            typeTLV = struct.unpack('I', readBuffer[52:56])[0]
+            lenTLV = struct.unpack('I', readBuffer[56:60])[0]  # include length of tlvHeader(8bytes)
+            numPoints = (lenTLV - 8) // 20
+            # print("frames: ",subFrameNum,"numTLVs:",numTLVs,"type:",typeTLV,"length:",lenTLv,'numPoints:',numPoints)
+            PointcloudLength = 20
 
-        # TLVpointCLOUD start index
-        HeaderLength = 52
-        Typelength = 8
+            # TLVpointCLOUD start index
+            HeaderLength = 52
+            Typelength = 8
 
-        if typeTLV == 6 and numPoints > 0:
-            # Initialize variables
-            x = []
-            y = []
-            z = []
-            pointClouds = []
-            range_list = []
-            azimuth_list = []
-            elevation_list = []
-            doppler_list = []
-            for numP in range(numPoints):
-                try:
-                    Prange = struct.unpack('f', readBuffer[
-                                                HeaderLength + Typelength + numP * PointcloudLength:HeaderLength + Typelength + numP * PointcloudLength + 4])
-                    azimuth = struct.unpack('f', readBuffer[
-                                                 HeaderLength + Typelength + numP * PointcloudLength + 4:HeaderLength + Typelength + numP * PointcloudLength + 8])
-                    elevation = struct.unpack('f', readBuffer[
-                                                   HeaderLength + Typelength + numP * PointcloudLength + 8:HeaderLength + Typelength + numP * PointcloudLength + 12])
-                    doppler = struct.unpack('f', readBuffer[
-                                                 HeaderLength + Typelength + numP * PointcloudLength + 12:HeaderLength + Typelength + numP * PointcloudLength + 16])
-                    framedata.append(pointClouds)
-                except:  # Because sometimes the packet's length will not same with the packet's lenTLV
-                    continue
-                # spherical coordinate system
+            if typeTLV == 6 and numPoints > 0:
+                # Initialize variables
+                x = []
+                y = []
+                z = []
+                pointClouds = []
+                range_list = []
+                azimuth_list = []
+                elevation_list = []
+                doppler_list = []
+                for numP in range(numPoints):
+                    try:
+                        Prange = struct.unpack('f', readBuffer[
+                                                        HeaderLength + Typelength + numP * PointcloudLength:HeaderLength + Typelength + numP * PointcloudLength + 4])
+                        azimuth = struct.unpack('f', readBuffer[
+                                                         HeaderLength + Typelength + numP * PointcloudLength + 4:HeaderLength + Typelength + numP * PointcloudLength + 8])
+                        elevation = struct.unpack('f', readBuffer[
+                                                           HeaderLength + Typelength + numP * PointcloudLength + 8:HeaderLength + Typelength + numP * PointcloudLength + 12])
+                        doppler = struct.unpack('f', readBuffer[
+                                                         HeaderLength + Typelength + numP * PointcloudLength + 12:HeaderLength + Typelength + numP * PointcloudLength + 16])
+                        framedata.append(pointClouds)
+                    except:  # Because sometimes the packet's length will not same with the packet's lenTLV
+                        continue
+                    # spherical coordinate system
 
-                range_list.append(Prange)  # range
-                azimuth_list.append(azimuth)  # azimuth
-                elevation_list.append(elevation)  # elevation
-                doppler_list.append(doppler)  # doppler
+                    range_list.append(Prange)  # range
+                    azimuth_list.append(azimuth)  # azimuth
+                    elevation_list.append(elevation)  # elevation
+                    doppler_list.append(doppler)  # doppler
 
-                # Pack to List with pointCloud(spherical)
-                pointClouds.append([range_list, azimuth_list, elevation_list, doppler_list])
+                    # Pack to List with pointCloud(spherical)
+                    pointClouds.append([range_list, azimuth_list, elevation_list, doppler_list])
 
-            # Cartesian coordinate system
-            r = np.multiply(range_list[:], np.cos(elevation_list))
-            x = np.multiply(r[:], np.sin(azimuth_list[:]))
-            y = np.multiply(r[:], np.cos(azimuth_list[:]))
-            z = np.multiply(range_list[:], np.sin(elevation_list))
+                # Cartesian coordinate system
+                r = np.multiply(range_list[:], np.cos(elevation_list))
+                x = np.multiply(r[:], np.sin(azimuth_list[:]))
+                y = np.multiply(r[:], np.cos(azimuth_list[:]))
+                z = np.multiply(range_list[:], np.sin(elevation_list))
 
-            data = np.concatenate((x, y, z), axis=1)
-            denoise_point = dbfilter(data)
-            denoise_numPoint = numPoints - len(denoise_point)
+                data = np.concatenate((x, y, z), axis=1)
+                denoise_point = dbfilter(data)
+                denoise_numPoint = numPoints - len(denoise_point)
 
-            # Feature Matrix preprocess(Voxalize)
-            if denoise_numPoint > numPoints / 2:
-                p_x_y, p_y_z, p_z_x = voxalize(50, 30, 50, x, y, z)
+                # Feature Matrix preprocess(Voxalize)
+                if denoise_numPoint > numPoints / 2:
+                    p_x_y, p_y_z, p_z_x = voxalize(50, 30, 50, x, y, z)
+                else:
+                    p_x_y, p_y_z, p_z_x = voxalize(50, 30, 50, denoise_point[:, 0], denoise_point[:, 1],
+                                                       denoise_point[:, 2])
+
+                # Frame Data not null from Serial-port
+                isnull = 0
             else:
-                p_x_y, p_y_z, p_z_x = voxalize(50, 30, 50, denoise_point[:, 0], denoise_point[:, 1],
-                                               denoise_point[:, 2])
-
-            # Frame Data not null from Serial-port
-            isnull = 0
-        else:
-            isnull = 1
-            return [], [], [], [], 0, 0, isnull
-        return subFrameNum, p_x_y, p_y_z, p_z_x, numPoints, denoise_numPoint, isnull
+                isnull = 1
+                return [], [], [], [], 0, 0, isnull
+            return subFrameNum, p_x_y, p_y_z, p_z_x, numPoints, denoise_numPoint, isnull
 
     else:
         isnull = 1
@@ -327,8 +332,8 @@ def plot_state(plot_data, plot_raw_data, savename, human_states):
 
 def demo():
     configFileName = "./6843_pplcount_debug.cfg"
-    dataPortName = "COM3"
-    userPortName = "COM4"
+    dataPortName = "COM21"
+    userPortName = "COM10"
     plot_data = []  # checked results
     plot_raw_data = []  # unchecked results
     savename = './plot.png'
