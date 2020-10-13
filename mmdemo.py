@@ -114,16 +114,25 @@ def readAndParseData(Dataport):
     readBuffer = Dataport.read(Dataport.in_waiting)
     byteVec = np.frombuffer(readBuffer, dtype='uint8')
     framedata = []
-    # print(len(byteVec))
+    #print("readBuffer", len(readBuffer))
+    #print("byteVec", byteVec)
+    #print(len(byteVec))
 
     # --------------------------------For point cloud-----------------------------------------------------------------------
-    if np.all(byteVec[0:8] == magicWord) and len(readBuffer) > 52:
+
+    if len(byteVec) > 8:
+        magicWord_check = np.all(byteVec[0:8] == magicWord)
+    else:
+        magicWord_check = False
+
+    if magicWord_check and len(readBuffer) > 52:
         subFrameNum = struct.unpack('I', readBuffer[24:28])[0]
         numTLVs = struct.unpack('h', readBuffer[48:50])[0]
         typeTLV = struct.unpack('I', readBuffer[52:56])[0]
+        print("readBuffer[52:60] = ", readBuffer[52:60])
         lenTLV = struct.unpack('I', readBuffer[56:60])[0]  # include length of tlvHeader(8bytes)
         numPoints = (lenTLV - 8) // 20
-        # print("frames: ",subFrameNum,"numTLVs:",numTLVs,"type:",typeTLV,"length:",lenTLv,'numPoints:',numPoints)
+        print("frames: ", subFrameNum, "numTLVs:", numTLVs, "type:", typeTLV, "length:", lenTLV, 'numPoints:', numPoints)
         PointcloudLength = 20
 
         # TLVpointCLOUD start index
@@ -168,8 +177,13 @@ def readAndParseData(Dataport):
             x = np.multiply(r[:], np.sin(azimuth_list[:]))
             y = np.multiply(r[:], np.cos(azimuth_list[:]))
             z = np.multiply(range_list[:], np.sin(elevation_list))
-
-            data = np.concatenate((x, y, z), axis=1)
+            #print("r=", r)
+            print("r_size=", r.size)
+            print("x_size=", x.size)
+            print("y_size=", y.size)
+            print("z_size=", z.size)
+            if r.size > 0:
+                data = np.concatenate((x, y, z), axis=1)
             denoise_point = dbfilter(data)
             denoise_numPoint = numPoints - len(denoise_point)
 
@@ -232,7 +246,7 @@ def model_init():
     input_1 = np.zeros([12, 50, 30])
     input_2 = np.zeros([12, 30, 50])
 
-    return classes,human_states, interpreter, input_1, input_2
+    return classes, human_states, interpreter, input_1, input_2
 
 
 def prediction(input_1, input_2, interpreter, classes):
@@ -297,26 +311,26 @@ def check_state(results, state):
     human_states = ["standing", "sitting", "fall", "grow_up", "other"]
     classes = ["st_sit", "sit_st", "sit_lie", "lie_sit", "fall", "grow_up", "other"]
 
-    if results == classes[0]:
-        state = human_states[1]  # sitting
-    elif results == classes[1]:
-        state = human_states[0]  # standing
-    elif results == classes[2]:
-        state = human_states[2]  # fall from sitting
-    elif results == classes[3]:
-        state = human_states[1]  # sitting from fall
-    elif results == classes[4]:
-        state = human_states[2]  # fall
-    elif results == classes[5]:
-        state = human_states[3]  # grow_up
-    elif results == classes[6]:
-        state = human_states[4]  # other
+    if results == classes[0]:    # st_sit
+        state = human_states[1]
+    elif results == classes[1]:  # sit_st
+        state = human_states[0]
+    elif results == classes[2]:  # sit_lie
+        state = human_states[2]
+    elif results == classes[3]:  # lie_sit
+        state = human_states[1]
+    elif results == classes[4]:  # fall
+        state = human_states[2]
+    elif results == classes[5]:  # grow_up
+        state = human_states[3]
+    elif results == classes[6]:  # other
+        state = human_states[4]
     return state
 
 
 def plot_state(plot_data, plot_raw_data, savename, human_states):
     plt.plot(np.arange(len(plot_data)), plot_data, color='red', label='checked')
-    plt.plot(np.arange(len(plot_raw_data)), plot_raw_data, color='b', label='Unchecked')
+    plt.plot(np.arange(len(plot_raw_data)), plot_raw_data, color='b', label='Unhecked')
     plt.yticks(range(1, 6), human_states)
     plt.ylim([0.0, 6.0])
     plt.xlabel("Frames")
@@ -337,7 +351,7 @@ def demo():
     CLIport, Dataport = serialConfig(configFileName, dataPortName, userPortName)
 
     # Initialize interpreter and Print Input/Output'shape of model
-    classes,human_states, interpreter, input_1, input_2 = model_init()
+    classes, human_states, interpreter, input_1, input_2 = model_init()
     # Initialize Camera and cv2
     cap, state, results, probabilty, pos_state, fontcolor = camera_init()
 
@@ -351,10 +365,11 @@ def demo():
                 ret, Videoframe = cap.read()
 
                 # define Picture/Frame's information
+                #cv2.putText(影像, 文字, 座標, 字型, 大小, 顏色, 線條寬度, 線條種類)
                 cv2.putText(Videoframe, "Frames:{} Points:{} noise:{}".format(numframes, numPoints, denoise_numPoint),
                             (10, 40),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
-                cv2.putText(Videoframe, "states:", (10, 80),
+                cv2.putText(Videoframe, "state:", (10, 80),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
                 cv2.putText(Videoframe, "{}({:.2f}%) {}".format(state, probabilty * 100, pos_state), (140, 80),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, fontcolor, 2, cv2.LINE_AA)
