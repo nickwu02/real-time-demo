@@ -209,8 +209,12 @@ def readAndParseData(Dataport):
 
 
 def stack_data(frames, x, y, input_1, input_2):
-    x = np.reshape(x, (50, 30))  # Input1 Matrix setup
-    y = np.reshape(y, (30, 50))  # Input2 Matrix setup
+    print("x=", x)
+    print("x.size=", x.size)
+    print("x.size=", y.size)
+    print("frames=", frames)
+    x = np.reshape(x, (120, 50))  # Input1 Matrix setup
+    y = np.reshape(y, (50, 120))  # Input2 Matrix setup
 
     if frames < 12:
         input_1[frames, :, :] = x
@@ -232,7 +236,7 @@ def model_init():
     classes = ["st_sit", "sit_st", "sit_lie", "lie_sit", "fall", "grow_up", "other"]
     human_states = ["standing", "sitting", "fall", "grow_up", "other"]
     # create Interpreter for model
-    interpreter = tf.lite.Interpreter(model_path="./converted_model2.tflite")
+    interpreter = tf.lite.Interpreter(model_path="./new_model.tflite")
     interpreter.allocate_tensors()
 
     # Model Input/Output Matrix format
@@ -243,16 +247,16 @@ def model_init():
     print("Intput's shape:{}\n{}\n".format(input_details[0]['shape'], input_details[1]['shape']))
 
     # Define Input dimension
-    input_1 = np.zeros([12, 50, 30])
-    input_2 = np.zeros([12, 30, 50])
+    input_1 = np.zeros([12, 120, 50])
+    input_2 = np.zeros([12, 50, 120])
 
     return classes, human_states, interpreter, input_1, input_2
 
 
 def prediction(input_1, input_2, interpreter, classes):
     # Reshape Input dimension and astype to float32
-    input_1 = np.reshape(input_1, (1, 12, 50, 30, 1)).astype('float32')
-    input_2 = np.reshape(input_2, (1, 12, 30, 50, 1)).astype('float32')
+    input_1 = np.reshape(input_1, (1, 12, 120, 50, 1)).astype('float32')
+    input_2 = np.reshape(input_2, (1, 12, 50, 120, 1)).astype('float32')
 
     # Set tensor (2 input)
     interpreter.set_tensor(interpreter.get_input_details()[0]['index'], input_1)
